@@ -81,12 +81,22 @@ form {
     @apply flex flex-col items-center gap-8 max-w-4xl text-center max-sm:gap-4;
   }
   .resumes-section {
-    @apply flex flex-wrap max-md:flex-col max-md:gap-4 gap-6 items-start max-md:items-center w-full max-w-[1850px] justify-evenly;
+    @apply flex flex-wrap max-md:flex-col max-md:gap-2 gap-6 items-start max-md:items-center w-full max-w-[1850px] justify-evenly;
   }
 
   .resume-card {
-    @apply flex flex-col gap-8 h-[560px] w-[350px] lg:w-[430px] xl:w-[490px] bg-white rounded-2xl p-4;
-  }
+  @apply flex flex-col gap-2
+    w-full
+    max-w-[450px]
+    sm:max-w-[380px]
+    md:max-w-[320px]
+    lg:max-w-[350px]
+    xl:max-w-[390px]
+    min-h-[460px]
+    bg-white rounded-2xl p-4
+    shadow-md
+    cursor-pointer;
+}
 
   .resume-card-header {
     @apply flex flex-row gap-2 justify-between min-h-[110px] max-sm:flex-col items-center max-md:justify-center max-md:items-center;
