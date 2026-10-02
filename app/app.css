@@ -24,10 +24,10 @@ body {
 }
 
 main {
-  @apply min-h-screen pt-10;
+  @apply min-h-screen pt-8;
 }
 h1 {
-  @apply max-sm:text-[3rem] text-6xl  text-gradient leading-tight xl:tracking-[-2px] font-semibold;
+  @apply max-sm:text-[2.25rem] text-6xl  text-gradient leading-tight xl:tracking-[-2px] font-semibold;
 }
 
 h2 {
@@ -38,15 +38,15 @@ label {
   @apply text-dark-200;
 }
 input {
-  @apply w-full p-4 inset-shadow rounded-2xl focus:outline-none bg-white;
+  @apply w-full p-2 min-h-11 inset-shadow rounded-2xl focus:outline-none bg-white;
 }
 
 textarea {
-  @apply w-full p-4 inset-shadow rounded-2xl focus:outline-none bg-white;
+  @apply w-full p-2 inset-shadow rounded-2xl focus:outline-none bg-white;
 }
 
 form {
-  @apply flex flex-col items-start gap-8 w-full;
+  @apply flex flex-col items-start gap-8 w-full max-sm:gap-5;
 }
 
 @layer components {
@@ -72,13 +72,13 @@ form {
     @apply flex flex-row items-center gap-2 border border-gray-200 rounded-lg p-2 shadow-sm;
   }
   .auth-button {
-    @apply primary-gradient rounded-full py-4 px-8 cursor-pointer w-[600px] max-md:w-full text-3xl font-semibold text-white;
+    @apply primary-gradient rounded-full py-4 px-8 cursor-pointer w-full max-w-[600px] max-md:w-full text-3xl font-semibold text-white;
   }
   .main-section {
-    @apply flex flex-col items-center gap-8 pt-12 max-sm:mx-2 mx-15 pb-5;
+    @apply flex flex-col items-center gap-6 pt-8 px-4 sm:px-6 lg:px-10 max-sm:gap-4 max-sm:pt-2 pb-8;
   }
   .page-heading {
-    @apply flex flex-col items-center gap-8 max-w-4xl text-center max-sm:gap-4;
+    @apply flex flex-col items-center gap-8 max-w-4xl text-center w-full max-sm:gap-3;
   }
   .resumes-section {
     @apply flex flex-wrap max-md:flex-col max-md:gap-2 gap-6 items-start max-md:items-center w-full max-w-[1850px] justify-evenly;
@@ -89,25 +89,33 @@ form {
     w-full
     max-w-[450px]
     sm:max-w-[380px]
-    md:max-w-[320px]
-    lg:max-w-[350px]
-    xl:max-w-[390px]
+    md:max-w-[420px]
+    lg:max-w-[390px]
+    xl:max-w-[420px]
+    2xl:max-w-[450px]
     min-h-[460px]
+    max-sm:min-h-[380px]
     bg-white rounded-2xl p-4
     shadow-md
     cursor-pointer;
 }
 
   .resume-card-header {
-    @apply flex flex-row gap-2 justify-between min-h-[110px] max-sm:flex-col items-center max-md:justify-center max-md:items-center;
+    @apply flex flex-row gap-2 justify-between min-h-[110px] max-sm:min-h-[80px] max-sm:flex-col items-center max-md:justify-center max-md:items-center;
   }
 
   .feedback-section {
-    @apply flex flex-col gap-8 w-1/2 px-8 max-lg:w-full py-6;
+    @apply flex flex-col gap-8 w-full lg:w-1/2 px-8 py-6;
   }
 
   .navbar {
-    @apply flex flex-row justify-between items-center bg-white rounded-full p-4 w-full px-10 max-w-[1200px] mx-auto;
+    @apply flex flex-row justify-between items-center bg-white rounded-full p-3 sm:p-4 
+    w-[calc(100%-3rem)]
+    sm:w-[calc(100%-3rem)]
+    lg:w-full
+    px-4 sm:px-6 lg:px-10 
+    max-w-[1200px] 
+    mx-auto;
   }
 
   .score-badge {
@@ -119,7 +127,7 @@ form {
   }
 
   .uplader-drag-area {
-    @apply relative p-8 text-center transition-all duration-700 cursor-pointer bg-white rounded-2xl min-h-[208px];
+    @apply relative p-6 sm:p-8 text-center transition-all duration-700 cursor-pointer bg-white rounded-2xl min-h-[208px] max-sm:min-h-[160px] w-full;
   }
   .uploader-selected-file {
     @apply flex items-center justify-between p-3 bg-gray-50 rounded-2xl;
@@ -158,5 +166,16 @@ form {
   }
   to {
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
