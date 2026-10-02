@@ -1,9 +1,8 @@
 import Navbar from "~/components/Navbar";
 import type { Route } from "./+types/home";
-import { resumes as mockResumes } from "../../constants";
 import ResumeCard from "~/components/ResumeCard";
 import { usePuterStore } from "~/lib/puter";
-import { useNavigate } from "react-router";
+import { useNavigate, Link } from "react-router";
 import { useEffect, useState } from "react";
 
 export function meta({}: Route.MetaArgs) {
@@ -14,66 +13,33 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Home() {
-  const { auth, kv, puterReady } = usePuterStore();
+  const { auth, kv, puterReady, fs } = usePuterStore();
   const navigate = useNavigate();
-  const [ userResumes, setUserResumes ] = useState<Resume[]>([]);
   const [ loadingKv, setLoadingKv ] = useState(true);
+  const [ resumes, setResumes ] = useState<Resume[]>([]);
+  const [ loadingResumes, setLoadingResumes ] = useState(false);
 
   useEffect(() => {
     if (!auth.isAuthenticated) navigate("/auth?next=/");
   }, [auth.isAuthenticated, navigate]);
 
   useEffect(() => {
-    async function loadUserResumes() {
-      if (!puterReady) return;
-      try {
-        const keys = await kv.list("resume:*", false);
-        if (Array.isArray(keys) && keys.length > 0) {
-          const loaded: Resume[] = [];
-          for (const key of keys) {
-            const rawKey = typeof key === "string" ? key : (key as any).key;
-            if (!rawKey) continue;
-            const val = await kv.get(rawKey);
-            if (val) {
-              try {
-                const parsed = JSON.parse(val);
-                // Map stored object to Resume structure if completed or valid feedback
-                const overallScore = parsed.feedback?.overallScore ?? (parsed.status === "PARSING_FAILED" ? 0 : 70);
-                loaded.push({
-                  id: parsed.id,
-                  companyName: parsed.companyName || "Untitled Company",
-                  jobTitle: parsed.jobTitle || "Resume Submission",
-                  imagePath: parsed.imagePath || "/images/resume_01.png",
-                  resumePath: parsed.resumePath || "",
-                  feedback: parsed.feedback || {
-                    overallScore,
-                    ATS: { score: 0, tips: [] },
-                    toneAndStyle: { score: 0, tips: [] },
-                    content: { score: 0, tips: [] },
-                    structure: { score: 0, tips: [] },
-                    skills: { score: 0, tips: [] },
-                  },
-                });
-              } catch (e) {
-                console.warn("Failed to parse resume item:", e);
-              }
-            }
-          }
-          if (loaded.length > 0) {
-            setUserResumes(loaded.reverse()); // Show newest first
-          }
-        }
-      } catch (err) {
-        console.warn("Could not list user resumes from Puter KV:", err);
-      } finally {
-        setLoadingKv(false);
-      }
+    const loadResumes = async () => {
+      setLoadingResumes(true);
+
+      const resumes = (await kv.list('resume:*', true)) as KVItem[];
+
+      const parsedResumes = resumes?.map((resume) => (
+        JSON.parse(resume.value) as Resume
+      ))
+
+      console.log("parsedResumes", parsedResumes);
+      setResumes(parsedResumes || []);
+      setLoadingResumes(false);
     }
 
-    loadUserResumes();
+    loadResumes();
   }, [puterReady, kv]);
-
-  const allResumes = userResumes.length > 0 ? [...userResumes, ...mockResumes] : mockResumes;
 
   return (
     <main className="bg-[url('/bg-main.svg')] bg-cover min-h-screen">
@@ -81,14 +47,32 @@ export default function Home() {
       <section className="main-section">
         <div className="page-heading py-16">
           <h1>Track Your Application & Resume Ratings</h1>
-          <h2>Review your submission and check AI-powered feedback</h2>
+          {!loadingResumes && resumes?.length === 0 ? (
+            <h2>No resumes found. Upload your first resume to get feedback.</h2>
+          ): (
+            <h2>Review your submission and check AI-powered feedback</h2>
+          )}
         </div>
+        {loadingResumes && (
+          <div className="flex flex-col items-center justify-center">
+            <img src="../../images/resume-scan-2.gif" alt="" className="w-[200px]" />
+          </div>
+        )}
 
-        {allResumes.length > 0 && (
+
+        {!loadingResumes && resumes.length > 0 && (
           <div className="resumes-section">
-            {allResumes.map((resume) => (
+            {resumes.map((resume) => (
               <ResumeCard key={resume.id} resume={resume} />
             ))}
+          </div>
+        )}
+
+        {!loadingResumes && resumes?.length === 0 && (
+          <div className="flex flex-col items-center justify-center mt-10 gap-4">
+            <Link to="/upload" className="primary-button w-fit text-xl font-semibold">
+              Upload Resume
+            </Link>
           </div>
         )}
       </section>
