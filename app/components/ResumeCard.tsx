@@ -4,18 +4,34 @@ import { useEffect, useState } from "react";
 import { usePuterStore } from "~/lib/puter";
 
 const ResumeCard = ({resume: {id, companyName, jobTitle, feedback, imagePath}}: {resume: Resume}) => {
-    const { auth, kv, puterReady, fs } = usePuterStore();
+        const { puterReady, fs } = usePuterStore();
     const [resumeUrl, setResumeUrl ] = useState('');
 
-
     useEffect(() => {
+                if (!puterReady) return;
+
+                let active = true;
+                let objectUrl = '';
+                setResumeUrl('');
+
         const loadResume = async () => {
-          const blob = await fs.read(imagePath);
-          if(!blob) return;
-          let url = URL.createObjectURL(blob);
-          setResumeUrl(url);
-        }
-      }, [imagePath]);
+                    try {
+                        const blob = await fs.read(imagePath);
+                        if (!blob || !active) return;
+                        objectUrl = URL.createObjectURL(blob);
+                        setResumeUrl(objectUrl);
+                    } catch {
+                        if (active) setResumeUrl('');
+                    }
+                };
+
+                void loadResume();
+
+                return () => {
+                    active = false;
+                    if (objectUrl) URL.revokeObjectURL(objectUrl);
+                };
+        }, [fs, imagePath, puterReady]);
 
 
   return (
