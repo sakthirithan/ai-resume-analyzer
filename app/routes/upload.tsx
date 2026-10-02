@@ -2,8 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import Navbar from '~/components/Navbar';
 import FileUploader from '~/components/FileUploader';
-import { usePuterStore } from '~/lib/puter';
+import { usePuterStore, parseAndValidateAIResponse } from '~/lib/puter';
 import { convertPdfToImage } from '~/lib/pdf2img';
+import { extractResumeText } from '~/lib/resumeParser';
 import { generateUUID } from '~/lib/utils';
 import { prepareInstructions } from '../../constants/index';
 
@@ -44,10 +45,10 @@ const Upload = () => {
     const navigate = useNavigate();
     const [ isProcessing, setIsProcessing ] = useState(false);
     const [ statusText, setStatusText ] = useState('');
-    const [file, setFile] = useState<File | null>(null);
+    const [ file, setFile ] = useState<File | null>(null);
 
-    const handleFileSelect = (file: File | null) => {
-        setFile(file);
+    const handleFileSelect = (selectedFile: File | null) => {
+        setFile(selectedFile);
     };
 
     const handleAnalyze = async ({ companyName, jobTitle, jobDescription, file }: { companyName: string, jobTitle: string, jobDescription: string, file: File}) => {
@@ -62,7 +63,7 @@ const Upload = () => {
         }
 
         setIsProcessing(true);
-        setStatusText('Uploading resume...');
+        setStatusText('Uploading resume file...');
         let currentStage = 'uploading resume';
 
         try {
@@ -74,67 +75,130 @@ const Upload = () => {
                 return;
             }
 
-            currentStage = 'converting the PDF';
-            setStatusText('Converting to image...');
+            currentStage = 'converting the PDF preview';
+            setStatusText('Rendering preview image...');
 
             const imageFile = await convertPdfToImage(file);
-            if (!imageFile.file) {
-                setStatusText(imageFile.error ?? 'Error: Failed to convert PDF to image.');
-                setIsProcessing(false);
-                return;
+            let uploadedImagePath = '/images/resume_01.png';
+
+            if (imageFile.file) {
+                currentStage = 'uploading preview image';
+                setStatusText('Uploading preview image...');
+                const uploadedImage = await fs.upload([imageFile.file]);
+                if (uploadedImage) {
+                    uploadedImagePath = uploadedImage.path;
+                }
             }
 
-            currentStage = 'uploading the preview image';
-            setStatusText('Uploading the image...');
-            const uploadedImage = await fs.upload([imageFile.file]);
-            if (!uploadedImage) {
-                setStatusText('Error: Puter did not return the uploaded image. Please try again.');
-                setIsProcessing(false);
-                return;
-            }
+            currentStage = 'extracting text from resume';
+            setStatusText('Extracting resume text content...');
 
-            currentStage = 'saving resume data';
-            setStatusText('Preparing data...');
+            const extractionResult = await extractResumeText(file, {
+                imageFile: imageFile.file,
+                ocrService: async (imgBlob) => {
+                    const ocrRes = await ai.img2txt(imgBlob);
+                    return ocrRes;
+                }
+            });
 
             const uuid = generateUUID();
 
+            if (!extractionResult.success || !extractionResult.extractedText) {
+                console.warn(`[Resume Analysis] Text extraction failed: ${extractionResult.error}`);
+                const errorData = {
+                    id: uuid,
+                    resumePath: uploadedFile.path,
+                    imagePath: uploadedImagePath,
+                    companyName,
+                    jobTitle,
+                    jobDescription,
+                    status: 'PARSING_FAILED',
+                    error: {
+                        code: extractionResult.errorCode || 'TEXT_EXTRACTION_FAILED',
+                        message: extractionResult.error || 'Failed to extract readable text from the resume.'
+                    },
+                    createdAt: new Date().toISOString()
+                };
+
+                await kv.set(`resume:${uuid}`, JSON.stringify(errorData));
+                setStatusText(`Error: ${extractionResult.error || 'Failed to extract readable text from resume.'}`);
+                setIsProcessing(false);
+                return;
+            }
+
+            currentStage = 'analyzing resume with AI';
+            setStatusText('Analyzing candidate resume against job requirements...');
+
+            const prompt = prepareInstructions({
+                jobTitle,
+                jobDescription,
+                resumeText: extractionResult.extractedText,
+            });
+
+            const aiResponse = await ai.analyzeResumeText(prompt);
+
+            if (!aiResponse || !aiResponse.message) {
+                const errorData = {
+                    id: uuid,
+                    resumePath: uploadedFile.path,
+                    imagePath: uploadedImagePath,
+                    companyName,
+                    jobTitle,
+                    jobDescription,
+                    status: 'ANALYSIS_FAILED',
+                    error: {
+                        code: 'AI_RESPONSE_EMPTY',
+                        message: 'AI service returned an empty response.'
+                    },
+                    createdAt: new Date().toISOString()
+                };
+
+                await kv.set(`resume:${uuid}`, JSON.stringify(errorData));
+                setStatusText('Error: AI service failed to return feedback. Please try again.');
+                setIsProcessing(false);
+                return;
+            }
+
+            const rawContent = typeof aiResponse.message.content === 'string'
+                ? aiResponse.message.content
+                : Array.isArray(aiResponse.message.content)
+                    ? aiResponse.message.content.map((c: any) => (typeof c === 'string' ? c : c.text || '')).join('\n')
+                    : JSON.stringify(aiResponse.message.content);
+
+            let feedback;
+            try {
+                feedback = parseAndValidateAIResponse(rawContent);
+            } catch (jsonErr) {
+                console.error('[Resume Analysis] Failed to parse AI JSON:', jsonErr, rawContent);
+                setStatusText('Error: AI returned invalid response format.');
+                setIsProcessing(false);
+                return;
+            }
+
             const data = {
                 id: uuid,
+                status: 'COMPLETED',
                 resumePath: uploadedFile.path,
-                imagePath: uploadedImage.path,
+                imagePath: uploadedImagePath,
                 companyName,
                 jobTitle,
                 jobDescription,
-                feedback: '',
+                feedback,
+                meta: {
+                    characterCount: extractionResult.characterCount,
+                    method: extractionResult.method,
+                    pageCount: extractionResult.pageCount
+                },
+                createdAt: new Date().toISOString()
             };
 
             await kv.set(`resume:${uuid}`, JSON.stringify(data));
 
-            currentStage = 'analyzing the resume';
-            setStatusText('Analyzing...');
-
-            const feedback = await ai.feedback(
-                uploadedFile.path,
-                prepareInstructions({
-                    jobTitle,
-                    jobDescription,
-                }),
-            );
-            if (!feedback) {
-                setStatusText('Error: Failed to analyze resume. Please try again.');
-                setIsProcessing(false);
-                return;
-            }
-
-            const feedbackText = typeof feedback.message.content === 'string'
-                ? feedback.message.content
-                : feedback.message.content[0].text;
-
-            data.feedback = JSON.parse(feedbackText);
-            await kv.set(`resume:${uuid}`, JSON.stringify(data));
-
-            setStatusText('Analysis complete, redirecting...');
-            console.log(data);
+            setStatusText('Analysis complete! Redirecting...');
+            setTimeout(() => {
+                console.log(data);
+                navigate(`/resume/${uuid}`);
+            }, 600);
         } catch (error) {
             setStatusText(`Error ${currentStage}: ${describeUploadError(error)}`);
             setIsProcessing(false);
@@ -144,23 +208,25 @@ const Upload = () => {
     const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const form = e.currentTarget.closest('form');
-        if(!form) return;
+        if (!form) return;
 
         const formData = new FormData(form);
 
-        const companyName = formData.get('company-name') as string;
-        const jobTitle = formData.get('job-title') as string;
-        const jobDescription = formData.get('job-description') as string;
+        const companyName = (formData.get('company-name') as string) || '';
+        const jobTitle = (formData.get('job-title') as string) || '';
+        const jobDescription = (formData.get('job-description') as string) || '';
 
-        if(!file) return;
+        if (!file) {
+            setStatusText('Please select a resume file before analyzing.');
+            return;
+        }
 
         handleAnalyze({
             companyName, 
             jobTitle,
             jobDescription,
             file
-        })
-
+        });
     };
 
   return (
@@ -179,7 +245,7 @@ const Upload = () => {
                 ) : (
                     <h2>Drop your resume for an ATS score and improvement tips</h2>
                 )}
-                {!isProcessing && statusText && <p role="alert">{statusText}</p>}
+                {!isProcessing && statusText && <p role="alert" className="text-red-600 font-medium mt-2">{statusText}</p>}
                 {!isProcessing && (
                     <form id="upload-form" onSubmit={handleSubmit} className="flex flex-col gap-4 mt-8">
                         <div className="form-div">
@@ -195,7 +261,7 @@ const Upload = () => {
                             <textarea rows={5} id="job-description" name="job-description" placeholder="Job Description" />
                         </div>
                         <div className="form-div">
-                            <label htmlFor="uplaoder" className="">Upload resume</label>
+                            <label htmlFor="uploader" className="">Upload resume</label>
                             <FileUploader onFileSelect={handleFileSelect} />
                         </div>
 
@@ -207,7 +273,7 @@ const Upload = () => {
             </div>
         </section>
     </main>
-  )
-}
+  );
+};
 
-export default Upload
+export default Upload;

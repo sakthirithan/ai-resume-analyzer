@@ -76,6 +76,9 @@ interface PuterStore {
       path: string,
       message: string
     ) => Promise<AIResponse | undefined>;
+    analyzeResumeText: (
+      promptText: string
+    ) => Promise<AIResponse | undefined>;
     img2txt: (
       image: string | File | Blob,
       testMode?: boolean
@@ -354,6 +357,16 @@ export const usePuterStore = create<PuterStore>((set, get) => {
     ) as Promise<AIResponse | undefined>;
   };
 
+  const analyzeResumeText = async (promptText: string) => {
+    const puter = getPuter();
+    if (!puter) {
+      setError("Puter.js not available");
+      return;
+    }
+
+    return puter.ai.chat(promptText) as Promise<AIResponse | undefined>;
+  };
+
   const img2txt = async (image: string | File | Blob, testMode?: boolean) => {
     const puter = getPuter();
     if (!puter) {
@@ -439,6 +452,7 @@ export const usePuterStore = create<PuterStore>((set, get) => {
         options?: PuterChatOptions
       ) => chat(prompt, imageURL, testMode, options),
       feedback: (path: string, message: string) => feedback(path, message),
+      analyzeResumeText: (promptText: string) => analyzeResumeText(promptText),
       img2txt: (image: string | File | Blob, testMode?: boolean) =>
         img2txt(image, testMode),
     },
@@ -454,3 +468,65 @@ export const usePuterStore = create<PuterStore>((set, get) => {
     clearError: () => set({ error: null }),
   };
 });
+
+function clampScore(val: any, fallback = 70): number {
+  const num = Number(val);
+  if (isNaN(num)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(num)));
+}
+
+export function parseAndValidateAIResponse(rawResponse: string): Feedback {
+  let cleanedText = rawResponse.trim();
+  if (cleanedText.startsWith("```")) {
+    cleanedText = cleanedText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  }
+
+  const firstBrace = cleanedText.indexOf("{");
+  const lastBrace = cleanedText.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    cleanedText = cleanedText.slice(firstBrace, lastBrace + 1);
+  }
+
+  const parsed = JSON.parse(cleanedText);
+
+  const atsScore = clampScore(parsed?.ATS?.score);
+  const toneScore = clampScore(parsed?.toneAndStyle?.score);
+  const contentScore = clampScore(parsed?.content?.score);
+  const structureScore = clampScore(parsed?.structure?.score);
+  const skillsScore = clampScore(parsed?.skills?.score);
+
+  let overallScore = clampScore(parsed?.overallScore, -1);
+  if (overallScore <= 0 || isNaN(overallScore)) {
+    overallScore = Math.round(
+      atsScore * 0.35 +
+      contentScore * 0.25 +
+      skillsScore * 0.20 +
+      structureScore * 0.10 +
+      toneScore * 0.10
+    );
+  }
+
+  return {
+    overallScore,
+    ATS: {
+      score: atsScore,
+      tips: Array.isArray(parsed?.ATS?.tips) ? parsed.ATS.tips : [],
+    },
+    toneAndStyle: {
+      score: toneScore,
+      tips: Array.isArray(parsed?.toneAndStyle?.tips) ? parsed.toneAndStyle.tips : [],
+    },
+    content: {
+      score: contentScore,
+      tips: Array.isArray(parsed?.content?.tips) ? parsed.content.tips : [],
+    },
+    structure: {
+      score: structureScore,
+      tips: Array.isArray(parsed?.structure?.tips) ? parsed.structure.tips : [],
+    },
+    skills: {
+      score: skillsScore,
+      tips: Array.isArray(parsed?.skills?.tips) ? parsed.skills.tips : [],
+    },
+  };
+}

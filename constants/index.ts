@@ -228,19 +228,35 @@ export const AIResponseFormat = `
 export const prepareInstructions = ({
   jobTitle,
   jobDescription,
+  resumeText,
 }: {
   jobTitle: string;
   jobDescription: string;
+  resumeText: string;
 }) =>
-  `You are an expert in ATS (Applicant Tracking System) and resume analysis.
-  Please analyze and rate this resume and suggest how to improve it.
-  The rating can be low if the resume is bad.
-  Be thorough and detailed. Don't be afraid to point out any mistakes or areas for improvement.
-  If there is a lot to improve, don't hesitate to give low scores. This is to help the user to improve their resume.
-  If available, use the job description for the job user is applying to to give more detailed feedback.
-  If provided, take the job description into consideration.
-  The job title is: ${jobTitle}
-  The job description is: ${jobDescription}
-  Provide the feedback using the following format: ${AIResponseFormat}
-  Return the analysis as a JSON object, without any other text and without the backticks.
-  Do not include any other text or comments.`;
+  `You are an expert ATS (Applicant Tracking System) reviewer and hiring manager assistant.
+  Analyze the provided candidate resume text against the target job title and job description.
+
+  CRITICAL DIRECTIVES:
+  1. The resume text has been successfully extracted from the uploaded resume file.
+  2. DO NOT state or assume the resume is unreadable or corrupted. Base your evaluation strictly on the actual resume text provided below.
+  3. Evaluate ATS compatibility, tone and style, content quality, formatting/structure, and candidate technical skills.
+  4. Compare required skills and keywords in the job description against the resume text. Identify matched skills and missing qualifications.
+  5. Assign accurate, fair scores (0-100) for overall score and each subcategory based on genuine merit.
+  6. Provide 3-4 specific, actionable tips for each category ("good" for strong points, "improve" for areas needing work).
+
+  JOB TITLE:
+  ${jobTitle || "General Application"}
+
+  JOB DESCRIPTION:
+  ${jobDescription || "General Application"}
+
+  EXTRACTED RESUME CONTENT:
+  --------------------------------------------------
+  ${resumeText}
+  --------------------------------------------------
+
+  Provide the analysis formatted strictly as a single valid JSON object following this exact interface schema:
+  ${AIResponseFormat}
+
+  IMPORTANT: Return ONLY the raw JSON object without any backticks, markdown syntax (\`\`\`json), or conversational preamble.`;
